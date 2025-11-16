@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "functions": {
+    "api/playlist.js": {
+      "maxDuration": 60
+    },
+    "api/segment.js": {
+      "maxDuration": 60
+    },
+    "api/health.js": {
+      "maxDuration": 10
+    }
+  },
+  "routes": [
+    {
+      "src": "/playlist",
+      "dest": "/api/playlist.js"
+    },
+    {
+      "src": "/segment",
+      "dest": "/api/segment.js"
+    },
+    {
+      "src": "/health",
+      "dest": "/api/health.js"
+    }
+  ]
+}
