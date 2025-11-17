@@ -1,11 +1,13 @@
-let logs = [];
+import { get, set } from "@vercel/edge-config";
 
 export default async function handler(req, res) {
   if (req.method === "POST") {
     try {
       const body = await req.json();
-      logs.push({ ts: Date.now(), ...body });
-      if (logs.length > 500) logs = logs.slice(-500);
+      const existing = (await get("logs")) || [];
+      const updated = [...existing, { ts: Date.now(), ...body }];
+      const trimmed = updated.slice(-500);
+      await set("logs", trimmed);
       res.status(200).json({ ok: true });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message });
@@ -17,16 +19,18 @@ export default async function handler(req, res) {
     const wantsJson = req.query.json === "true";
     const idFilter = req.query.id || null;
 
-    let result = logs;
-    if (idFilter) {
-      result = result.filter((l) => l.id === idFilter);
-    }
+    const logs = (await get("logs")) || [];
+    const result = idFilter ? logs.filter((l) => l.id === idFilter) : logs;
 
     if (wantsJson) {
       res.setHeader("Content-Type", "application/json");
-      res.status(200).send(JSON.stringify({ logs: result }));
+      res.status(200).json({ logs: result });
     } else {
       res.setHeader("Content-Type", "text/plain");
+      if (!result.length) {
+        res.status(200).send("No logs yet");
+        return;
+      }
       const lines = result.map(
         (l) =>
           `[${new Date(l.ts).toISOString()}] ${l.level || "info"} ${l.msg} ` +
