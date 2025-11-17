@@ -9,11 +9,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    console.log(`segment_request: seg=${seg}`);
-
     const proxyUrl = seg.startsWith("https://hlsr.vercel.app/api/proxy?url=")
       ? seg
       : `https://hlsr.vercel.app/api/proxy?url=${encodeURIComponent(seg)}`;
+
+    console.log(`segment_request: proxyUrl=${proxyUrl}`);
 
     const resp = await fetch(proxyUrl);
     if (!resp.ok) {
@@ -23,7 +23,6 @@ export default async function handler(req, res) {
     }
 
     console.log(`segment_serving: seg=${seg}, status=${resp.status}`);
-
     res.setHeader("Content-Type", "video/mp2t");
     resp.body.pipe(res);
   } catch (err) {
