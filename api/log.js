@@ -1,31 +1,42 @@
-// api/log.js
-let logs = []; // ephemeral in-memory store
+let logs = [];
 
 export default async function handler(req, res) {
   if (req.method === "POST") {
     try {
       const body = await req.json();
       logs.push({ ts: Date.now(), ...body });
-      if (logs.length > 100) logs = logs.slice(-100);
+      if (logs.length > 500) logs = logs.slice(-500);
       res.status(200).json({ ok: true });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message });
     }
-  } else if (req.method === "GET") {
+    return;
+  }
+
+  if (req.method === "GET") {
     const wantsJson = req.query.json === "true";
+    const idFilter = req.query.id || null;
+
+    let result = logs;
+    if (idFilter) {
+      result = result.filter((l) => l.id === idFilter);
+    }
 
     if (wantsJson) {
       res.setHeader("Content-Type", "application/json");
-      res.status(200).json({ logs });
+      res.status(200).send(JSON.stringify({ logs: result }));
     } else {
-      // fallback: simple text view
       res.setHeader("Content-Type", "text/plain");
-      const lines = logs.map(
-        l => `[${new Date(l.ts).toISOString()}] ${l.level || "info"}: ${l.msg} ${JSON.stringify(l)}`
+      const lines = result.map(
+        (l) =>
+          `[${new Date(l.ts).toISOString()}] ${l.level || "info"} ${l.msg} ` +
+          `ua="${l.ua || ""}" ip="${l.ip || ""}" path="${l.path || ""}" ` +
+          `${JSON.stringify(l)}`
       );
       res.status(200).send(lines.join("\n"));
     }
-  } else {
-    res.status(405).send("Method not allowed");
+    return;
   }
+
+  res.status(405).send("Method not allowed");
 }
