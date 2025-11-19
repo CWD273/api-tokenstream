@@ -39,8 +39,12 @@ export default async function handler(req, res) {
           // Preserve all tags (#EXTINF, #EXT-X-*, etc.)
           return line;
         }
-        // Rewrite segment URIs to go through /api/segment
-        return `${origin}/api/segment?seg=${encodeURIComponent(line)}`;
+        // Only rewrite if it looks like a segment (.ts)
+        if (line.endsWith(".ts")) {
+          return `${origin}/api/segment?seg=${encodeURIComponent(line)}`;
+        }
+        // Leave other URIs (like variant .m3u8) untouched
+        return line;
       })
       .join("\n");
 
