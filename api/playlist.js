@@ -1,8 +1,21 @@
 import fetch from "node-fetch";
 
 export default async function handler(req, res) {
-  const { id, url } = req.query;
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Range, User-Agent, Referer, Origin");
+    res.status(200).end();
+    return;
+  }
 
+  // Always set CORS headers
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Range, User-Agent, Referer, Origin");
+
+  const { id, url } = req.query;
   let sourceUrl;
   if (url) {
     sourceUrl = url.startsWith("https://hlsr.vercel.app/api/proxy?url=")
@@ -18,8 +31,8 @@ export default async function handler(req, res) {
     return;
   }
 
-  try {
-    const resp = await fetch(sourceUrl, {
+  async function fetchPlaylist(urlToFetch) {
+    return fetch(urlToFetch, {
       redirect: "follow",
       headers: {
         "User-Agent": req.headers["user-agent"] || "Mozilla/5.0",
@@ -27,6 +40,15 @@ export default async function handler(req, res) {
         "Origin": `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}`,
       },
     });
+  }
+
+  try {
+    let resp = await fetchPlaylist(sourceUrl);
+    if (!resp.ok) {
+      console.warn(`playlist_first_attempt_failed: status=${resp.status}`);
+      // Retry once
+      resp = await fetchPlaylist(sourceUrl);
+    }
 
     console.log(`playlist_upstream_status: ${resp.status}, final_url=${resp.url}`);
 
@@ -41,11 +63,10 @@ export default async function handler(req, res) {
     const origin = `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}`;
     let lines = playlistText.split("\n");
 
-    // Ensure required headers exist
     if (!lines.some(l => l.startsWith("#EXTM3U"))) lines.unshift("#EXTM3U");
     if (!lines.some(l => l.startsWith("#EXT-X-VERSION"))) lines.splice(1, 0, "#EXT-X-VERSION:3");
 
-    // Collect segment durations
+    // Normalize target duration and media sequence
     let maxDuration = 0;
     let mediaSeq = null;
     lines.forEach(line => {
@@ -57,24 +78,19 @@ export default async function handler(req, res) {
         mediaSeq = parseInt(line.split(":")[1], 10);
       }
     });
-
-    // Normalize target duration
     if (!lines.some(l => l.startsWith("#EXT-X-TARGETDURATION"))) {
       lines.splice(2, 0, `#EXT-X-TARGETDURATION:${Math.ceil(maxDuration) || 10}`);
     }
-
-    // Normalize media sequence
     if (mediaSeq === null) {
       lines.splice(3, 0, "#EXT-X-MEDIA-SEQUENCE:0");
     }
 
-    // Rewrite only .ts segment URIs
     const rewritten = lines.map(line => {
       if (!line || line.startsWith("#")) return line;
       if (line.trim().endsWith(".ts")) {
         return `${origin}/api/segment?seg=${encodeURIComponent(line.trim())}`;
       }
-      return line; // leave .m3u8 references untouched
+      return line;
     }).join("\n");
 
     res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
