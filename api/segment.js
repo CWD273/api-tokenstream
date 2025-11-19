@@ -23,14 +23,23 @@ export default async function handler(req, res) {
     }
 
     console.log(`segment_serving: seg=${seg}, status=${resp.status}`);
-    res.setHeader("Content-Type", "video/mp2t");
 
-    // Preserve useful upstream headers
-    const copyHeaders = ["content-length", "cache-control", "accept-ranges"];
-    copyHeaders.forEach(h => {
+    // Forward upstream headers for strict players
+    const copyHeaders = [
+      "content-type",
+      "content-length",
+      "cache-control",
+      "accept-ranges",
+      "etag",
+      "last-modified"
+    ];
+    copyHeaders.forEach((h) => {
       const val = resp.headers.get(h);
       if (val) res.setHeader(h, val);
     });
+
+    // Ensure correct MIME type
+    res.setHeader("Content-Type", "video/mp2t");
 
     resp.body.pipe(res);
   } catch (err) {
