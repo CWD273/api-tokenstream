@@ -31,16 +31,15 @@ export default async function handler(req, res) {
     }
     const playlistText = await resp.text();
 
-    // Rewrite segment URIs but preserve all tags
     const origin = `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}`;
     const rewritten = playlistText
       .split("\n")
       .map((line) => {
         if (!line || line.startsWith("#")) {
-          // Preserve comments and tags (#EXTINF, #EXT-X-*, etc.)
+          // Preserve tags (#EXTINF, #EXT-X-*, etc.)
           return line;
         }
-        // Rewrite segment URIs to go through our /api/segment
+        // Rewrite segment URIs to go through /api/segment
         return `${origin}/api/segment?seg=${encodeURIComponent(line)}`;
       })
       .join("\n");
