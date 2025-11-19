@@ -29,24 +29,27 @@ export default async function handler(req, res) {
       res.status(502).send("Upstream playlist error");
       return;
     }
-    const playlistText = await resp.text();
+    let playlistText = await resp.text();
 
     const origin = `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}`;
-    const rewritten = playlistText
-      .split("\n")
-      .map((line) => {
-        if (!line || line.startsWith("#")) {
-          // Preserve all tags (#EXTINF, #EXT-X-*, etc.)
-          return line;
-        }
-        // Only rewrite if it looks like a segment (.ts)
-        if (line.endsWith(".ts")) {
-          return `${origin}/api/segment?seg=${encodeURIComponent(line)}`;
-        }
-        // Leave other URIs (like variant .m3u8) untouched
-        return line;
-      })
-      .join("\n");
+    let lines = playlistText.split("\n");
+
+    // Ensure required headers exist
+    if (!lines.some(l => l.startsWith("#EXTM3U"))) {
+      lines.unshift("#EXTM3U");
+    }
+    if (!lines.some(l => l.startsWith("#EXT-X-VERSION"))) {
+      lines.splice(1, 0, "#EXT-X-VERSION:3");
+    }
+
+    // Rewrite only .ts segment URIs
+    const rewritten = lines.map((line) => {
+      if (!line || line.startsWith("#")) return line; // preserve tags
+      if (line.trim().endsWith(".ts")) {
+        return `${origin}/api/segment?seg=${encodeURIComponent(line.trim())}`;
+      }
+      return line; // leave other URIs (like variant .m3u8) untouched
+    }).join("\n");
 
     console.log("playlist_rewritten: served to client");
 
