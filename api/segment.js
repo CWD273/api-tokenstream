@@ -38,10 +38,26 @@ export default async function handler(req, res) {
 
   try {
     let resp = await fetchSegment(proxyUrl);
-    if (!resp.ok) {
-      console.warn(`segment_first_attempt_failed: status=${resp.status}`);
-      // Retry once
-      resp = await fetchSegment(proxyUrl);
+
+    // If token expired (403), refresh playlist and retry
+    if (resp.status === 403) {
+      console.warn("segment_token_expired: refreshing playlist…");
+
+      // Short delay to let upstream issue a new token
+      await new Promise(resolve => setTimeout(resolve, 400));
+
+      // Re-fetch playlist to get fresh token
+      const playlistUrl = `https://hlsr.vercel.app/api/playlist?id=cartoon-network`;
+      const playlistResp = await fetch(playlistUrl, { redirect: "follow" });
+      if (playlistResp.ok) {
+        const playlistText = await playlistResp.text();
+        // Extract a fresh segment URL from the new playlist
+        const newSeg = playlistText.split("\n").find(l => l && !l.startsWith("#") && l.endsWith(".ts"));
+        if (newSeg) {
+          console.log(`segment_retry_with_new_token: ${newSeg}`);
+          resp = await fetchSegment(newSeg);
+        }
+      }
     }
 
     console.log(`segment_upstream_status: ${resp.status}, final_url=${resp.url}`);
@@ -66,4 +82,4 @@ export default async function handler(req, res) {
     console.error(`segment_error: ${err.message}`);
     res.status(500).send("Segment error");
   }
-}
+                        }
