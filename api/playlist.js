@@ -11,7 +11,6 @@ export default async function handler(req, res) {
       : `https://hlsr.vercel.app/api/proxy?url=${encodeURIComponent(url)}`;
     console.log(`playlist_request: custom url=${url}`);
   } else if (id) {
-    // Example hardcoded bootstrap for id
     sourceUrl =
       "https://hlsr.vercel.app/api/proxy?url=http://206.212.244.71:8080/live/Abxc5k/363887/46708.m3u8";
     console.log(`playlist_request: id=${id}`);
@@ -23,14 +22,23 @@ export default async function handler(req, res) {
 
   try {
     console.log(`playlist_fetch: sourceUrl=${sourceUrl}`);
-    const resp = await fetch(sourceUrl);
+
+    // Forward headers to mimic real browser requests
+    const resp = await fetch(sourceUrl, {
+      headers: {
+        "User-Agent": req.headers["user-agent"] || "Mozilla/5.0",
+        "Referer": req.headers["referer"] || `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}`
+      }
+    });
+
+    console.log(`playlist_upstream_status: ${resp.status}`);
     if (!resp.ok) {
-      console.error(`playlist_fetch_error: status=${resp.status}`);
+      console.error(`playlist_fetch_error: status=${resp.status}, url=${sourceUrl}`);
       res.status(502).send("Upstream playlist error");
       return;
     }
-    let playlistText = await resp.text();
 
+    let playlistText = await resp.text();
     const origin = `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}`;
     let lines = playlistText.split("\n");
 
