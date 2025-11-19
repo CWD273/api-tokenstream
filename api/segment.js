@@ -1,18 +1,32 @@
 import fetch from "node-fetch";
 
 export default async function handler(req, res) {
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Range, User-Agent, Referer, Origin");
+    res.status(200).end();
+    return;
+  }
+
+  // Always set CORS headers
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Range, User-Agent, Referer, Origin");
+
   const { seg } = req.query;
   if (!seg) {
     res.status(400).send("Missing segment");
     return;
   }
 
-  try {
-    const proxyUrl = seg.startsWith("https://hlsr.vercel.app/api/proxy?url=")
-      ? seg
-      : `https://hlsr.vercel.app/api/proxy?url=${encodeURIComponent(seg)}`;
+  const proxyUrl = seg.startsWith("https://hlsr.vercel.app/api/proxy?url=")
+    ? seg
+    : `https://hlsr.vercel.app/api/proxy?url=${encodeURIComponent(seg)}`;
 
-    const resp = await fetch(proxyUrl, {
+  async function fetchSegment(urlToFetch) {
+    return fetch(urlToFetch, {
       redirect: "follow",
       headers: {
         "User-Agent": req.headers["user-agent"] || "Mozilla/5.0",
@@ -20,6 +34,15 @@ export default async function handler(req, res) {
         "Origin": `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}`,
       },
     });
+  }
+
+  try {
+    let resp = await fetchSegment(proxyUrl);
+    if (!resp.ok) {
+      console.warn(`segment_first_attempt_failed: status=${resp.status}`);
+      // Retry once
+      resp = await fetchSegment(proxyUrl);
+    }
 
     console.log(`segment_upstream_status: ${resp.status}, final_url=${resp.url}`);
 
