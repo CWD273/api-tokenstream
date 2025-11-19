@@ -44,9 +44,11 @@ export default async function handler(req, res) {
 
   try {
     let resp = await fetchPlaylist(sourceUrl);
+
+    // Retry once if failed
     if (!resp.ok) {
       console.warn(`playlist_first_attempt_failed: status=${resp.status}`);
-      // Retry once
+      await new Promise(resolve => setTimeout(resolve, 400));
       resp = await fetchPlaylist(sourceUrl);
     }
 
@@ -63,6 +65,7 @@ export default async function handler(req, res) {
     const origin = `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}`;
     let lines = playlistText.split("\n");
 
+    // Ensure required headers
     if (!lines.some(l => l.startsWith("#EXTM3U"))) lines.unshift("#EXTM3U");
     if (!lines.some(l => l.startsWith("#EXT-X-VERSION"))) lines.splice(1, 0, "#EXT-X-VERSION:3");
 
@@ -85,6 +88,7 @@ export default async function handler(req, res) {
       lines.splice(3, 0, "#EXT-X-MEDIA-SEQUENCE:0");
     }
 
+    // Rewrite segment URIs
     const rewritten = lines.map(line => {
       if (!line || line.startsWith("#")) return line;
       if (line.trim().endsWith(".ts")) {
@@ -99,4 +103,4 @@ export default async function handler(req, res) {
     console.error(`playlist_error: ${err.message}`);
     res.status(500).send("Playlist error");
   }
-}
+                     }
