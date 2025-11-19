@@ -23,17 +23,25 @@ export default async function handler(req, res) {
   try {
     console.log(`playlist_fetch: sourceUrl=${sourceUrl}`);
 
-    // Forward headers to mimic real browser requests
+    // Forward headers and follow redirects
     const resp = await fetch(sourceUrl, {
+      redirect: "follow",
       headers: {
         "User-Agent": req.headers["user-agent"] || "Mozilla/5.0",
-        "Referer": req.headers["referer"] || `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}`
-      }
+        "Referer":
+          req.headers["referer"] ||
+          `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}`,
+      },
     });
 
     console.log(`playlist_upstream_status: ${resp.status}`);
+    console.log(`playlist_final_url: ${resp.url}`);
+
     if (!resp.ok) {
-      console.error(`playlist_fetch_error: status=${resp.status}, url=${sourceUrl}`);
+      const body = await resp.text();
+      console.error(
+        `playlist_upstream_error_body: ${body.slice(0, 200)}...`
+      );
       res.status(502).send("Upstream playlist error");
       return;
     }
@@ -43,21 +51,23 @@ export default async function handler(req, res) {
     let lines = playlistText.split("\n");
 
     // Ensure required headers exist
-    if (!lines.some(l => l.startsWith("#EXTM3U"))) {
+    if (!lines.some((l) => l.startsWith("#EXTM3U"))) {
       lines.unshift("#EXTM3U");
     }
-    if (!lines.some(l => l.startsWith("#EXT-X-VERSION"))) {
+    if (!lines.some((l) => l.startsWith("#EXT-X-VERSION"))) {
       lines.splice(1, 0, "#EXT-X-VERSION:3");
     }
 
     // Rewrite only .ts segment URIs
-    const rewritten = lines.map((line) => {
-      if (!line || line.startsWith("#")) return line; // preserve tags
-      if (line.trim().endsWith(".ts")) {
-        return `${origin}/api/segment?seg=${encodeURIComponent(line.trim())}`;
-      }
-      return line; // leave other URIs (like variant .m3u8) untouched
-    }).join("\n");
+    const rewritten = lines
+      .map((line) => {
+        if (!line || line.startsWith("#")) return line; // preserve tags
+        if (line.trim().endsWith(".ts")) {
+          return `${origin}/api/segment?seg=${encodeURIComponent(line.trim())}`;
+        }
+        return line; // leave other URIs (like variant .m3u8) untouched
+      })
+      .join("\n");
 
     console.log("playlist_rewritten: served to client");
 
