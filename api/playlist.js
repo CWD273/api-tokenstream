@@ -41,9 +41,34 @@ export default async function handler(req, res) {
     const origin = `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}`;
     let lines = playlistText.split("\n");
 
+    // Ensure required headers exist
     if (!lines.some(l => l.startsWith("#EXTM3U"))) lines.unshift("#EXTM3U");
     if (!lines.some(l => l.startsWith("#EXT-X-VERSION"))) lines.splice(1, 0, "#EXT-X-VERSION:3");
 
+    // Collect segment durations
+    let maxDuration = 0;
+    let mediaSeq = null;
+    lines.forEach(line => {
+      if (line.startsWith("#EXTINF:")) {
+        const dur = parseFloat(line.replace("#EXTINF:", "").split(",")[0]);
+        if (!isNaN(dur)) maxDuration = Math.max(maxDuration, dur);
+      }
+      if (line.startsWith("#EXT-X-MEDIA-SEQUENCE")) {
+        mediaSeq = parseInt(line.split(":")[1], 10);
+      }
+    });
+
+    // Normalize target duration
+    if (!lines.some(l => l.startsWith("#EXT-X-TARGETDURATION"))) {
+      lines.splice(2, 0, `#EXT-X-TARGETDURATION:${Math.ceil(maxDuration) || 10}`);
+    }
+
+    // Normalize media sequence
+    if (mediaSeq === null) {
+      lines.splice(3, 0, "#EXT-X-MEDIA-SEQUENCE:0");
+    }
+
+    // Rewrite only .ts segment URIs
     const rewritten = lines.map(line => {
       if (!line || line.startsWith("#")) return line;
       if (line.trim().endsWith(".ts")) {
