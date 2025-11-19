@@ -15,23 +15,37 @@ export default async function handler(req, res) {
 
     console.log(`segment_request: proxyUrl=${proxyUrl}`);
 
-    const resp = await fetch(proxyUrl);
+    const resp = await fetch(proxyUrl, {
+      redirect: "follow",
+      headers: {
+        "User-Agent": req.headers["user-agent"] || "Mozilla/5.0",
+        "Referer":
+          req.headers["referer"] ||
+          `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}`,
+        "Origin": `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}`,
+      },
+    });
+
+    console.log(`segment_upstream_status: ${resp.status}`);
+    console.log(`segment_final_url: ${resp.url}`);
+
     if (!resp.ok) {
-      console.error(`segment_fetch_error: status=${resp.status}, seg=${seg}`);
-      res.status(502).send("Segment fetch failed");
+      const body = await resp.text();
+      console.error(
+        `segment_upstream_error_body: ${body.slice(0, 200)}...`
+      );
+      res.status(resp.status).send("Segment fetch failed");
       return;
     }
 
-    console.log(`segment_serving: seg=${seg}, status=${resp.status}`);
-
-    // Forward upstream headers for strict players
+    // Forward useful headers
     const copyHeaders = [
       "content-type",
       "content-length",
       "cache-control",
       "accept-ranges",
       "etag",
-      "last-modified"
+      "last-modified",
     ];
     copyHeaders.forEach((h) => {
       const val = resp.headers.get(h);
@@ -41,6 +55,7 @@ export default async function handler(req, res) {
     // Ensure correct MIME type
     res.setHeader("Content-Type", "video/mp2t");
 
+    console.log(`segment_serving: seg=${seg}, status=${resp.status}`);
     resp.body.pipe(res);
   } catch (err) {
     console.error(`segment_error: ${err.message}`);
