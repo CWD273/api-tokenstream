@@ -36,7 +36,7 @@ export default async function handler(req, res) {
       .split("\n")
       .map((line) => {
         if (!line || line.startsWith("#")) {
-          // Preserve tags (#EXTINF, #EXT-X-*, etc.)
+          // Preserve all tags (#EXTINF, #EXT-X-*, etc.)
           return line;
         }
         // Rewrite segment URIs to go through /api/segment
