@@ -1,5 +1,7 @@
 import fetch from "node-fetch";
 
+let upstreamCookies = ""; // share cookie jar
+
 export default async function handler(req, res) {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -27,18 +29,28 @@ export default async function handler(req, res) {
 
   async function fetchSegment(urlToFetch) {
     const headers = {
-      "User-Agent": "VLC/3.0.18 LibVLC/3.0.18", // spoof native UA
-      // omit Origin/Referer
+      "User-Agent": "VLC/3.0.18 LibVLC/3.0.18",
+      "Referer": "http://206.212.244.71:8080/",
     };
+    if (upstreamCookies) headers["Cookie"] = upstreamCookies;
+
     console.log(`segment_upstream_request: url=${urlToFetch}, headers=${JSON.stringify(headers)}`);
-    return fetch(urlToFetch, { redirect: "follow", headers });
+    const resp = await fetch(urlToFetch, { redirect: "follow", headers });
+
+    const setCookie = resp.headers.get("set-cookie");
+    if (setCookie) {
+      upstreamCookies = setCookie;
+      console.log(`segment_upstream_set_cookie: ${setCookie}`);
+    }
+
+    return resp;
   }
 
   try {
     let resp = await fetchSegment(proxyUrl);
 
     if (resp.status === 403) {
-      console.warn("segment_token_expired_or_cors_block: refreshing playlist…");
+      console.warn("segment_token_or_cors_block: refreshing playlist…");
       await new Promise(resolve => setTimeout(resolve, 400));
 
       const playlistUrl = `https://hlsr.vercel.app/api/playlist?id=cartoon-network`;
@@ -74,4 +86,4 @@ export default async function handler(req, res) {
     console.error(`segment_error: ${err.message}`);
     res.status(500).send("Segment error");
   }
-      }
+}
