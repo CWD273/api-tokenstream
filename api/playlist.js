@@ -1,5 +1,7 @@
 import fetch from "node-fetch";
 
+let upstreamCookies = ""; // simple in-memory cookie jar
+
 export default async function handler(req, res) {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -34,10 +36,21 @@ export default async function handler(req, res) {
   async function fetchPlaylist(urlToFetch) {
     const headers = {
       "User-Agent": "VLC/3.0.18 LibVLC/3.0.18", // spoof native UA
-      // omit Origin/Referer to look less like a browser
+      "Referer": "http://206.212.244.71:8080/", // spoof referer
     };
+    if (upstreamCookies) headers["Cookie"] = upstreamCookies;
+
     console.log(`playlist_upstream_request: url=${urlToFetch}, headers=${JSON.stringify(headers)}`);
-    return fetch(urlToFetch, { redirect: "follow", headers });
+    const resp = await fetch(urlToFetch, { redirect: "follow", headers });
+
+    // Capture cookies if set
+    const setCookie = resp.headers.get("set-cookie");
+    if (setCookie) {
+      upstreamCookies = setCookie;
+      console.log(`playlist_upstream_set_cookie: ${setCookie}`);
+    }
+
+    return resp;
   }
 
   try {
@@ -99,4 +112,4 @@ export default async function handler(req, res) {
     console.error(`playlist_error: ${err.message}`);
     res.status(500).send("Playlist error");
   }
-}
+      }
