@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Always set CORS headers
+  // Always set CORS headers downstream
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Range, User-Agent, Referer, Origin");
@@ -32,20 +32,17 @@ export default async function handler(req, res) {
   }
 
   async function fetchPlaylist(urlToFetch) {
-    return fetch(urlToFetch, {
-      redirect: "follow",
-      headers: {
-        "User-Agent": req.headers["user-agent"] || "Mozilla/5.0",
-        "Referer": req.headers["referer"] || `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}`,
-        "Origin": `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}`,
-      },
-    });
+    const headers = {
+      "User-Agent": "VLC/3.0.18 LibVLC/3.0.18", // spoof native UA
+      // omit Origin/Referer to look less like a browser
+    };
+    console.log(`playlist_upstream_request: url=${urlToFetch}, headers=${JSON.stringify(headers)}`);
+    return fetch(urlToFetch, { redirect: "follow", headers });
   }
 
   try {
     let resp = await fetchPlaylist(sourceUrl);
 
-    // Retry once if failed
     if (!resp.ok) {
       console.warn(`playlist_first_attempt_failed: status=${resp.status}`);
       await new Promise(resolve => setTimeout(resolve, 400));
@@ -62,14 +59,14 @@ export default async function handler(req, res) {
     }
 
     let playlistText = await resp.text();
+    console.log(`playlist_upstream_length: ${playlistText.length}`);
+
     const origin = `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}`;
     let lines = playlistText.split("\n");
 
-    // Ensure required headers
     if (!lines.some(l => l.startsWith("#EXTM3U"))) lines.unshift("#EXTM3U");
     if (!lines.some(l => l.startsWith("#EXT-X-VERSION"))) lines.splice(1, 0, "#EXT-X-VERSION:3");
 
-    // Normalize target duration and media sequence
     let maxDuration = 0;
     let mediaSeq = null;
     lines.forEach(line => {
@@ -88,7 +85,6 @@ export default async function handler(req, res) {
       lines.splice(3, 0, "#EXT-X-MEDIA-SEQUENCE:0");
     }
 
-    // Rewrite segment URIs
     const rewritten = lines.map(line => {
       if (!line || line.startsWith("#")) return line;
       if (line.trim().endsWith(".ts")) {
@@ -103,4 +99,4 @@ export default async function handler(req, res) {
     console.error(`playlist_error: ${err.message}`);
     res.status(500).send("Playlist error");
   }
-                     }
+}
